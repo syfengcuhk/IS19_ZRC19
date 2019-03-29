@@ -1,0 +1,546 @@
+\documentclass[a4paper]{article}
+
+\usepackage{INTERSPEECH2019}
+\usepackage{cite}
+\usepackage{color}
+\usepackage{pifont}
+\usepackage{soul}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{url}
+\usepackage{times}
+% \usepackage{algorithm}
+% \usepackage[noend]{algpseudocode}
+% \usepackage{fancyhdr,graphicx,amsmath,amssymb}
+\usepackage[ruled,vlined,linesnumbered]{algorithm2e}
+\def\X#1{%
+        % #1%
+        % \textcircled{#1}%
+        \raisebox{.9pt}{\textcircled{\raisebox{-.9pt}{#1}}}%
+        % \ding{\numexpr171+#1\relax}%
+}
+\newcommand{\quotes}[1]{``#1''}
+\setlength{\intextsep}{8pt plus 0pt minus 3pt} %distance between floats on the top or the bottom and the text
+\setlength{\textfloatsep}{8pt plus 0pt minus 4pt}%distance between two floats
+\setlength{\floatsep}{8pt plus 0pt minus 2pt}%distance
+\title{Combining Adversarial Training and  Disentangled Speech Representation  for Robust Zero-Resource Subword Modeling}
+\name{Siyuan Feng, Tan Lee, Zhiyuan Peng}%The maximum number of authors in the author list is twenty. If the number of contributing authors is more than twenty, they should be listed in a footnote or in acknowledgement section, as appropriate.
+\address{
+  Department of Electronic Engineering, The Chinese University of Hong Kong, Hong Kong}
+\email{siyuanfeng@link.cuhk.edu.hk,  tanlee@ee.cuhk.edu.hk, jerrypeng1937@gmail.com}
+
+\begin{document}
+% \ninept
+\maketitle
+% 
+\begin{abstract}
+This study addresses unsupervised discovery of basic subword units from untranscribed speech. It forms the basis of the ultimate goal, building text-to-speech  systems without  text labels (TTS without T). In this work,  unit discovery  is formulated  as the task of phoneme discriminative feature learning followed by vector quantization.  
+One major difficulty in unsupervised feature learning is speaker variation. The robustness of the learned features towards speaker variation is achieved by applying adversarial training and FHVAE based disentangled speech representation learning. The comparison between the two approaches as well as their combination are studied in a DNN-bottleneck feature architecture. Our proposed approaches are evaluated on ZeroSpeech 2019 and ZeroSpeech 2017.
+Experimental results on ZeroSpeech 2017 show that both approaches are effective while the latter is more prominent, and that their combination brings further improvement in across-speaker condition. Results on ZeroSpeech 2019 show that our approaches achieve significant subword ABX error rate reduction compared to the baseline system. The proposed unit sequence smoothing algorithm improves synthesis quality, at a cost of slight decrease in ABX discriminability.
+
+\end{abstract}
+\noindent\textbf{Index Terms}: acoustic unit discovery, subword modeling, zero resource, adversarial training, disentangled representation
+
+
+\section{Introduction}
+\label{sec:intro}
+Nowadays speech processing is dominated by deep learning techniques. Deep neural network (DNN) acoustic models (AMs) for the tasks of  automatic speech recognition (ASR) and speech synthesis have shown impressive performance for major languages such as English and Mandarin. Typically, training a DNN AM requires large amounts of transcribed data. For a large number of low-resource languages, for which very limited or no transcribed data are available, conventional methods of acoustic modeling are ineffective or even inapplicable.
+
+In recent years, there has been an increasing research interest in zero-resource speech processing, i.e., only a limited amount of  raw speech data (e.g. hours or tens of hours)  are given while no text transcriptions or linguistic knowledge are available. The Zero Resource Speech Challenges (ZeroSpeech)   2015 \cite{versteegh2015zero}, 2017 \cite{dunbar2017zero} and 2019 \cite{zs19} precisely focus on this area. One problem tackled by ZeroSpeech 2015 and 2017 is \textit{subword modeling}, learning frame-level speech representation that is discriminative to subword units and robust to linguistically-irrelevant factors such as speaker change. The latest challenge ZeroSpeech 2019 goes a step further by aiming at building text-to-speech (TTS) systems without any text labels (\textit{TTS without T}) or linguistic expertise. Specifically,  one is required to build an unsupervised subword modeling sub-system to automatically discover phoneme-like units in the concerned language, followed by applying the learned units altogether with speech data from which the units are inferred to train a TTS. Solving this problem may partially assist psycholinguists in understanding young children's language acquisition mechanism \cite{zs19}.
+% , as children learn to speak long before they learn to read and write.
+
+
+This study addresses unsupervised subword modeling  in ZeroSpeech 2019, which is also referred to as acoustic unit discovery (AUD).
+This is an essential problem and forms the basis of the entire TTS without T framework.
+% Being an essential problem, it forms the basis of the entire TTS without T system. 
+The exact goal of this problem  is to represent  untranscribed speech utterances by discrete subword unit sequences, which is slightly different from that in the context of ZeroSpeech 2017 \& 2015.
+In practice, it can be formulated as an extension to  the previous two challenges. For instance, after learning the subword discriminative feature representation at frame-level, the discrete unit sequences can be inferred by applying vector quantization methods  followed by collapsing  consecutive repetitive symbolic patterns. 
+% From this perspective, the tasks of acoustic unit discovery and feature representation learning are closely related.
+In the previous two challenges,  researchers proposed several unsupervised feature learning approaches  for comparison. Cluster posteriorgrams (PGs) \cite{chen2015parallel,ansari2017unsupervised,heck2017feature}, DNN bottleneck features \cite{shibata2017composite,chen2017multilingual}, autoencoder (AE) \cite{renshaw2015comparison}, variational AE (VAE) and their variants \cite{Feng2019improving,Chorowski2019unsup} are among the widely adopted approaches.
+
+One major difficulty  in robust unsupervised subword modeling is speaker variation. The huge  performance degradation caused by speaker variation reported in ZeroSpeech 2017 \cite{dunbar2017zero} implies that speaker-invariant  representation learning is crucial and remains to be solved. In the goal of ZeroSpeech 2019, speaker independent subword unit inventory  is  highly desirable in building a TTS without T system. In the literature, many works focused on improving speaker invariance in unsupervised feature learning. One direction is to apply  linear transform methods. Heck et al. \cite{heck2017feature} proposed to estimate fMLLR features in an unsupervised manner. Works in \cite{shibata2017composite,Feng2018exploiting} estimated fMLLR using a pretrained out-of-domain ASR. Chen et al. \cite{chen2017multilingual} applied vocal tract length normalization (VTLN).
+Another direction is to employ DNN models. Zeghidour et al. \cite{Zeghidour+2016} proposed to train subword and speaker same-different tasks within a triamese network and untangle linguistic and speaker information. Chorowski et al. \cite{Chorowski2019unsup} defined a speaker embedding as a condition of VAE decoder to free the encoder from capturing speaker information. Tsuchiya et al. \cite{Tsuchiya2018speaker} applied speaker adversarial training in a similar task to the zero-resource problem but supervised data for a target language was used during model training.
+
+In this paper, we propose to extend our recent research findings \cite{Feng2019improving} on applying disentangled speech representation learned from factorized hierarchical VAE (FHVAE) models \cite{hsu2017nips}  to improve speaker-invariant subword modeling. The contributions made in this study are in several aspects. First, the  FHVAE based speaker-invariant learning  is compared with  speaker adversarial training in the strictly unsupervised scenario. Second, the combination of speaker adversarial training and disentangled representation learning is evaluated.  Third, our proposed approaches are evaluated on the latest ZeroSpeech 2019 datasets and  metrics, as well as on ZeroSpeech 2017 for completeness.
+To our best knowledge, direct comparison and combination  of disentangled speech representation and adversarial training has not been studied before.
+
+\section{System description}
+\subsection{General framework}
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=0.85 \linewidth]{LaTeX/general_framework.pdf}
+    \caption{General framework of our proposed approaches}
+    \label{fig:framework}
+\end{figure}
+The general framework of our proposed approaches is illustrated in Fig. \ref{fig:framework}. Given untranscribed speech data for a target zero-resource language, the first step is to learn speaker-invariant features   to support frame labeling. The FHVAE model \cite{hsu2017nips} is adopted for this purpose. FHVAEs disentangle linguistic content and speaker information encoded in speech into different latent representations. 
+Compared with raw MFCC features, FHVAE reconstructed features conditioned on latent linguistic representation are expected to keep linguistic content unchanged and are more speaker-invariant. 
+% Meanwhile, linguistic content in reconstructed unchanged. 
+Details of the FHVAE structure and feature reconstruction methods are described in Section \ref{subsec:fhvae}.
+
+The  reconstructed features are fed as inputs to Dirichlet process Gaussian mixture model (DPGMM) \cite{chang2013parallel} for frame clustering, as was done in \cite{chen2015parallel}. 
+% The use of DPGMM clustering in unsupervised subword modeling has been proved effective in several works \cite{chen2015parallel,heck2017feature,Feng2018exploiting}. 
+The frame-level cluster labels are regarded as pseudo phone   labels to support supervised DNN training. Motivated by successful applications of adversarial training \cite{ganin2015unsupervised} in a wide range of   domain invariant learning tasks \cite{sun2017unsupvised,meng2018speaker,yi2019language,peng2019adversarial}, this work proposes to add an auxiliary adversarial speaker prediction task  to explicitly target improving  speaker invariance of the learned frame-level representation. 
+% This DNN is denoted as speaker adversarial multi-task (AMTL) DNN.
+% The subword modeling task in ZeroSpeech 2019 is to map speech utterances into unsupervisedly learned subword unit sequences. 
+After speaker adversarial multi-task learning (AMTL) DNN training, 
+% obtaining subword discriminative and speaker-invariant representation from the trained DNN model,
+softmax PG representation from pseudo phone prediction task is used to infer subword unit sequences.
+% vector quantization is adopted towards PG representation extracted from DPGMM softmax layer in order to infer subword unit sequences. 
+% Specifically,  for each input frame to the DNN model, the dimension of the maximally activated output neuron is treated as the subword unit assigned to this frame.  The frame-wise unit sequences are further processed by collapsing consecutive repetitive labels.
+The resultant unit sequences are regarded as pseudo transcriptions for subsequent TTS training.
+
+
+
+
+
+\subsection{Speaker-invariant feature learning by FHVAEs}
+\label{subsec:fhvae}
+FHVAEs formulate the generation process of sequential data by imposing sequence-dependent and sequence-independent priors to different latent variables \cite{hsu2017nips}. It consists of an inference model $\phi$ and a generation model $\theta$.
+Let $\mathcal{D}=\{\bm{X^{i}}\}_{i=1}^{M}$ denote a speech dataset with $M$ sequences. 
+% $\bm{X_i}$ is a sequence of speech features formed by concatenating all speech utterances belonging to speaker $i$. 
+Each $\bm{X^i}$ contains $N^i$ speech segments $\{\bm{x^{(i,n)}}\}^{N^i}_{n=1}$, where $\bm{x^{(i,n)}}$ is composed of fixed-length consecutive 
+% $\bm{x_i^n}\in \mathbb{R}^{d\times l}$ is composed of $l$ consecutive
+frames. The FHVAE model generates a sequence $\bm{X}$ from a random process as follows: 
+(1) An \textit{s-vector} $\bm{\mu_2 }$ is drawn from a prior distribution $p_{\theta}(\bm{\mu_2})=\mathcal{N} (\bm{0},\sigma^2_{\mu_2} \bm{I})$;
+(2) Latent segment variables $\bm{z_1 ^{n}} $ and latent sequence variables $\bm{z_2^{n}} $ are drawn from $p_{\theta}(\bm{z_1 ^{n}})=\mathcal{N} (\bm{0}, {\sigma^2_{z_1}} \bm{I})$ and  $p_{\theta}(\bm{z_2 ^{n}| \bm{\mu_2}})=\mathcal{N}(\bm{\mu_2}, {\sigma^2_{z_2}} \bm{I} )$ respectively;
+(3) Speech segment $\bm{x^{n}}$ is drawn from $p_{\theta}(\bm{x^{n}}|\bm{z_1 ^{n}, \bm{z_2^{n}}})=\mathcal{N}(f_{\mu_x} (\bm{z_1 ^{n}}, \bm{z_2^{n}}), diag(f_{\sigma^2_x} (\bm{z_1 ^{n}}, \bm{z_2^{n}}))$.
+Here $\mathcal{N}$ denotes standard normal distribution, $ f_{\mu_x} (\cdot, \cdot)$ and $ f_{\sigma^2_x} (\cdot, \cdot)$ are parameterized by DNNs.
+The joint probability for $\bm{X}$ is formulated as,
+\begin{equation}
+    p_{\theta} (\bm{\mu_2})\prod_{n=1}^{N} p_{\theta} (\bm{z_1^n}) p_{\theta} (\bm{z_2^{n}}|\bm{\mu_2})p_{\theta} (\bm{x^n}|\bm{z_1 ^{n}, \bm{z_2^{n}}}).
+\end{equation}
+
+As the exact posterior inference is intractable,  FHVAEs introduce an inference model $q_{\phi}$
+% $q_{\phi} (\bm{Z_1}, \bm{Z_2}, \bm{\mu_2}| \bm{X})$ 
+to approximate the true posterior,
+\begin{equation}
+   q_{\phi} (\bm{\mu_2})\prod_{n=1}^{N}q_{\phi} (\bm{z_2^n}| \bm{x^n}) q_{\phi}(\bm{z_1^n}|\bm{x^n}, \bm{z_2^n}).
+   \label{eqt:inference}
+\end{equation}
+Here  $q_{\phi} (\bm{\mu_2}), q_{\phi} (\bm{z_2^n}| \bm{x^n})$ and $q_{\phi}(\bm{z_1^n}|\bm{x^n}, \bm{z_2^n})$ are all diagonal Gaussian distributions. The mean and variance values of $q_{\phi} (\bm{z_2^n}| \bm{x^n})$ and $q_{\phi}(\bm{z_1^n}|\bm{x^n}, \bm{z_2^n})$ are parameterized by two DNNs. For $q_{\phi} (\bm{\mu_2})$, during FHVAE training, a trainable lookup table containing posterior mean of $\bm{\mu_2}$ for each sequence is updated. During testing, maximum a posteriori (MAP) estimation is used to infer  $\bm{\mu_2}$ of unseen test sequences.
+FHVAEs optimize discriminative segmental variational lower bound which was proposed in \cite{hsu2017nips}. It contains a  discriminative objective to 
+% encourage $\bm{z_2}$ to encode
+% \begin{equation}
+%  \log p_{\theta} (\bm{z_2^{(i,n)}}| \bm{\tilde{\mu}_2^i})-\log \sum_{j=1}^{M}p_{\theta} (\bm{z_2^{(j,n)}}| \bm{\tilde{\mu}_2^j}).    
+% \end{equation}
+% With this discriminative loss, $\bm{z_2}$ is encouraged to encode 
+% sequence-dependent information so as to 
+prevent $\bm{z_2}$ from being the same for all utterances.
+
+After FHVAE training, $\bm{z_1}$ is expected to encode segment-level factors e.g. linguistic information, while $\bm{z_2}$ is expected to encode sequence-level factors that are relatively consistent within an utterance. The s-vector $\bm{\mu_2}$ is  discriminative to speaker identity, assuming each training utterance is spoken by a certain speaker. This work considers applying \textit{s-vector unification} \cite{Feng2019improving} to generate reconstructed feature representation that keeps linguistic content unchanged while is more speaker-invariant compared to the original representation.
+% In the second method, s-vectors $\{\bm{\mu_2^{i}}\}$ of all the speech sequences are modified to the same value. 
+Specifically, a representative speaker with his/her s-vector (denoted as $\bm{\mu_2^*}$) is chosen from the dataset. Next, for each speech segment $\bm{x^{(i,n)}}$ of an arbitrary speaker $i$, its corresponding latent sequence variable $\bm{z_2^{(i,n)}}$ inferred from $\bm{x^{(i,n)}}$ is transformed to $\bm{\hat{z}_2^{(i,n)}}=\bm{z_2^{(i,n)}}-\bm{\mu_2^i}+\bm{\mu_2^*}$. 
+Finally  FHVAE decoder reconstructs speech segment $\bm{\hat{x}^{(i,n)}}$ conditioned on $\bm{z_1^{(i,n)}}$ and $ \bm{\hat{z}_2^{(i,n)}}$. The reconstructed features $\{\bm{\hat{x}^{(i,n)}}\}$ form our desired speaker-invariant representation.
+% The features $\{\bm{\hat{x}^{(i,n)}}\}$ are our desired 
+% that is relatively consistent within a sequence. $\bm{z_1}$ encodes residual factors that are sequence-independent.
+
+
+\subsection{Speaker AMTL}
+\label{subsec:amtl}
+Speaker AMTL 
+% was applied first to  robust ASR \cite{Shinohara2016}, and later for speaker adaptation and SAT \cite{Tsuchiya2018speaker,meng2018speaker}. AMTL based SAT  
+simultaneously trains a subword classification network ($M_p$),
+a speaker classification network ($M_s$) and a shared-hidden-layer feature extractor ($M_h$), where $M_p$ and $M_s$ are set on top of $M_h$, as illustrated in Fig. \ref{fig:framework}.
+% This architecture is similar to the MTL-DNN \cite{caruana1998multitask} used in multilingual DNN ASR \cite{Huang2013cross}. 
+% The major difference of AMTL from conventional MTL \cite{Huang2013cross} is on how learning error is propagated from $M_s$ to $M_h$. 
+In AMTL, the error is reversely propagated from $M_s$ to $M_h$ such that 
+% The core of AMTL is error back-propagation from $M_s$ to $M_h$, where the error is reversely propagated. 
+the output layer of  $M_h$ is forced to learn   speaker-invariant features so as to confuse $M_s$, while $M_s$ tries to correctly classify outputs of $M_h$ into their corresponding speakers. At the same time, $M_p$ learns to predict the correct DPGMM labels of input features, and back-propagate errors to $M_h$ in a usual way.
+
+Let $\theta_p, \theta_s$ and $\theta_h$ denote the network parameters of
+% us assume parameters of 
+$M_p, M_s$ and $M_h$, respectively.
+% are denoted as $\theta_p, \theta_s$ and $\theta_h$.
+With the stochastic gradient descent (SGD) algorithm, these parameters are updated as,
+% parameters of $M_p, M_s$ and $M_h$, denoted as $\theta_p, \theta_s$ and $\theta_h$, are updated as,
+% can be updated via stochastic gradient descent (SGD), i.e.,
+\begin{align}
+    \theta_p &\leftarrow \theta_p - \delta\frac{\partial \mathcal{L}_{p}}{\partial \theta_p}, 
+    \theta_s  \leftarrow \theta_s - \delta \frac{\partial \mathcal{L}_s}{\partial \theta_s}, \\
+    \theta_h & \leftarrow \theta_h -\delta \Big[\frac{\partial \mathcal{L}_p}{\partial \theta_h} - \lambda \frac{\partial \mathcal{L}_s}{\partial \theta_h}\Big], \label{eqt:grl}
+\end{align}
+where $\delta$ is the learning rate, $\lambda$ is the adversarial weight, $\mathcal{L}_p$ and $\mathcal{L}_s$ are the loss values of subword and speaker classification tasks respectively, both in terms of cross-entropy. To implement Eqt. (\ref{eqt:grl}), a gradient reversal layer (GRL) \cite{ganin2015unsupervised} was designed to connect $M_h$ and $M_s$. The GRL acts as identity transform during forward-propagation and changes the sign of loss  during back-propagation. 
+After training, the output of $M_h$ is speaker-invariant and subword discriminative bottleneck features (BNFs) of input speech. Similarly, the softmax output of $M_p$ is believed to carry less speaker information than that without performing speaker adversarial training. 
+% Note that in practice, $M_s$ 
+ 
+\subsection{Subword unit inference and  smoothing}
+Subword unit sequences for the concerned
+untranscribed speech utterances are inferred from DPGMM softmax PG representation of the speaker AMTL DNN.
+% as follows. 
+% Specifically,  f
+For each input frame to the DNN, the dimension of the maximally activated output neuron is regarded as the subword unit assigned to this frame.  The frame-level unit labels are further processed by collapsing consecutive repetitive labels to form pseudo transcriptions.
+% for  subsequent TTS training.
+
+% In our preliminary experiments, 
+% After performing vector quantization towards frame-level  softmax output representation of $M_p$, 
+We observed non-smoothness of the inferred unit sequences, i.e.,  frame-level unit labels that are isolated without temporal repetition,  using the above methods. Considering that ground-truth phonemes generally span at least several frames, these non-smooth labels are undesirable. This work proposes an empirical method to filter out part of the non-smooth unit labels as summarized in Algorithm \ref{algo}.
+
+\begin{algorithm}[h]
+\SetAlgoLined
+% \KwResult{Write here the result }
+\KwIn{Frame-level unit labels  $\bm{S}=\{s_1, \ldots ,s_N\}$ }
+\KwOut{Pseudo transcription $\bm{T}=\{t_1, \ldots, t_L\}$}
+%  Initialize $\bm{B} \leftarrow \{b_1, \ldots ,b_N$\}, where $b_1 \leftarrow 1$; $b_i \leftarrow \textrm{bool} (s_i\neq s_{i-1})$ for $2\leq i \leq N$\;
+%  \for{d}{}
+%  $i\leftarrow 5$; 
+ $\bm{B} \leftarrow \{b_1, \ldots ,b_N$\}, where $b_1 \leftarrow \textit{true}$, $b_j \leftarrow \textrm{bool} (s_j\neq s_{j-1})$ for $2\leq j \leq N$\; 
+ \While{$5\leq i\leq N$}{
+%   instructions\;
+  %\eIf
+  \If{$(b_{i-4}=\textrm{true}) and (b_{i-3}=\textrm{true}) and   (b_{i-2}=\textrm{true}) and (b_{i-1} + b_{i} = \textrm{true})  $}{
+  $b_{i-4}\leftarrow \textit{false}$; $i \leftarrow i+1$\;
+%   $i \leftarrow i+1$\;
+%   instructions2\;
+  }
+  {}
+ }
+%  $j,m\leftarrow 1$\;
+ $\bm{T} \leftarrow \bm{S} [\textrm{find}(\bm{B[\cdot] = \textit{true}})]$\;
+ %  \While{$j\leq N$}{
+%  \If{$b_j = \textrm{true}$}{$t_m \leftarrow s_j;m\leftarrow m+1$\; }
+%  }
+ \caption{Unit sequence smoothing}
+ \label{algo}
+\end{algorithm}
+
+% 
+% This is probably due to  
+% why do this
+% how is it done
+% algo.
+
+\section{ZeroSpeech 2017 experiments}
+\label{sec:exp_setup}
+% This Section presents experiments conducted on  feature representation learning task of ZeroSpeech 2017  \cite{dunbar2017zero}. 
+% In this period, BNFs from $M_p$ output layer are extracted  for task evaluation.
+\subsection{Dataset and evaluation metric}
+% Experiments are conducted with ZeroSpeech 2017 development data \cite{dunbar2017zero}. 
+ZeroSpeech 2017 development dataset consists of three languages, i.e. English, French and Mandarin. 
+% Each language contains separate training and test sets of untranscribed speech. 
+Speaker information  for training sets are given while unknown for test sets. The durations of training sets are $45, 24$ and $2.5$ hours respectively.
+% Test sets are organized into subsets of differing utterance lengths (1s, 10s and 120s). 
+Detailed information of the dataset can be found in \cite{dunbar2017zero}.
+
+% \begin{table}[htbp]
+% \renewcommand\arraystretch{0.7}
+% \centering
+% \caption{Development data in ZeroSpeech 2017}
+% \resizebox{0.6 \linewidth}{!}{%
+% \begin{tabular}{lcc|c}      
+% % \hline      
+% \toprule
+%  & \multicolumn{2}{c|}{ Training} & Test \\
+% \midrule
+%  & Duration  & \#speakers  & Duration\\
+% % \hline
+% \midrule
+% English & $45$ hrs & $69$ & $27$ hrs\\
+% French & $24$ hrs & $28$ & $18$ hrs\\
+% Mandarin & $2.5$ hrs & $12$ & $25$ hrs\\
+% % Training hours:  & $19.3$ & $81.5$ & $105.3$ \\
+% % Test hours:& $0.6$ & $0.7$ & $5.9$ \\
+% % Basic acoustic unit:  & Phone & Phone & Initial-Final \\
+% % \#basic units (inc. sil):& $33$ & $87$ & $61$ \\
+% % \#tied CD-HMM states:& $2462$ & $3431$ & $2386$ \\ 
+% % Lexicon size:& $ $ & $ 133K$& $ $ \\
+% % $\#$ Phonemes: &$43$& $46$&$ 29$& $44$& $38$\\
+% % \hline
+% \bottomrule
+% \end{tabular}%
+% }
+% \label{tab:zr17_data}
+% \end{table}
+The evaluation metric is ABX subword discriminability. Basically, it is to decide whether $X$ belongs to $x$ or $y$ if $A$ belongs to $x$ and $B$ belongs to $y$, where $A, B$ and $X$ are speech segments, $x$ and $y$ are two phonemes  that differ in the central sound (e.g., ``beg''-``bag''). Each pair of $A$ and $B$ is spoken by the same speaker. Depending on whether $X$ and $A(B)$ are spoken by the same speaker, ABX error rates for \textit{across-/within-speaker} are evaluated separately. Dynamic time warping and cosine distance are used to measure segment- and frame-level dissimilarity.
+% , as suggested by challenge organizers.
+% \begin{table*}[tbp]
+% \renewcommand\arraystretch{0.6}
+% \centering
+% \caption{ABX error rates ($\%$) on baseline and systems applying fMLLR and/or i-vector methods.}
+% \resizebox{0.95 \linewidth}{!}{%
+% \begin{tabular}{lccc|ccc|ccc|c||ccc|ccc|ccc|c}      
+% % \hline      
+% \toprule
+%  & \multicolumn{10}{c||}{ Across-speaker} & \multicolumn{10}{c}{ Within-speaker} \\
+% \midrule
+%  & \multicolumn{3}{c|}{ English} & \multicolumn{3}{c|}{ French} & \multicolumn{3}{c|}{Mandarin}& Avg.&\multicolumn{3}{c|}{ English} & \multicolumn{3}{c|}{ French} & \multicolumn{3}{c|}{Mandarin} & Avg.\\
+%  & 1s & 10s & 120s & 1s & 10s & 120s & 1s & 10s & 120s && 1s & 10s & 120s & 1s & 10s & 120s & 1s & 10s & 120s \\ 
+% % \midrule
+% %  & Duration & \#speakers  & Duration\\
+% % \hline
+% \midrule
+% MFCC (baseline) & $10.3$& 	$9.3$& 	$9.2$& 	$14.5$& 	$12.9$& 	$12.8$& 	$10.3$& 	$9.2$& 	$9.1$& 	$10.84$& $6.9$& 	$6.1$& 	$6.1$& 	$9.5$& 	$8.2$& 	$8.1$& 	$9.5$& 	$8.1$& 	$8.1$& 	$7.84$\\
+% MFCC+i-vector & $10.5$& 	$9.3$& 	$9.3$& 	$14.9$& 	$12.7$& 	$12.7$ &	$10.3$& 	$8.6$& 	$8.7$& 	$10.78$ 
+%  & $7.1$& 	$6.3$& 	$6.3$& 	$9.8$& 	$8.5$& 	$8.1$& 	$9.5$& 	$7.9$& 	$7.8$& 	$7.92$ 
+% \\ 
+% fMLLR & $10.6$& 	$9.4$& 	$8.9$& 	$14.5$& 	$13.0$& 	$11.9$& 	$10.0$& 	$8.5$& 	$7.8$& 	$10.51$& $7.1$& 	$6.5$& 	$6.2$& 	$9.4$& 	$9.2$& 	$7.9$& 	$9.4$& 	$8.3$& 	$7.6$& 	$7.96$ \\
+% fMLLR+i-vector & $10.6$& 	$9.3$& 	$8.8$& 	$14.7$& 	$12.9$& 	$12.0$& 	$10.0$& 	$8.4$& 	$7.8$& 	$10.50$ 
+% & $7.1$& 	$6.5$& 	$6.1$& 	$9.5$& 	$9.3$& 	$8.1$& 	$9.4$& 	$8.2 $&	$7.6$& 	$7.98$ 
+% \\ 
+
+
+
+
+% \bottomrule
+% \end{tabular}%
+% }
+% \label{tab:abx_results}
+% \end{table*}
+
+
+% \subsection{Out-of-domain ASR system}
+% An out-of-domain (OOD) ASR system is used to estimate fMLLR transforms for   zero-resource speech features.
+% % in this work is twofold. During frame label acquisition, an OOD ASR estimates fMLLR features for target zero-resource languages, towards which frame clustering is performed.
+% %to perform clustering.
+% %fMLLRs of target languages are clustered to obtain initial tokenization of untranscribed speech. 
+% % On the other hand, 
+% % Besides, when applying fMLLR based adaptation method, fMLLR features for target speech are estimated by the same ASR.
+% %, as seen in Fig. \ref{fig:framework}.
+% The OOD ASR is trained with CUSENT, a $19.3$-hour Cantonese  read speech corpus covering $34$ male and $34$ female speakers \cite{LeeLoChingEtAl2002}.  A context-dependent GMM-HMM AM with SAT (CD-GMM-HMM-SAT) is trained using Kaldi \cite{povey2011kaldi}. The $40$-dimensional fMLLRs are generated by performing vocal tract length normalization (VTLN) towards $39$-dimensional MFCCs+$\Delta$+$\Delta\Delta$, and processed by splicing with contexts $\pm 3$ to estimate $40$-dimensional LDA+MLLT, followed by fMLLR estimation. The total number of  HMM states are $2462$. A syllable tri-gram language model is trained with CUSENT transcriptions.
+% \label{subsec:ood_asr}
+\subsection{System setup}
+\label{subsec:baseline}
+% {\color{blue}s-vector, fhvae config, multilingual}
+The FHVAE model is trained with merged training sets of all three target languages.
+% Training data for all the three target languages are merged to train the FHVAE model. 
+Input features are fixed-length speech segments of $10$ frames. Each frame is represented by a $13$-dimensional MFCC with cepstral mean normalization (CMN) at speaker level. During training, speech utterances spoken by the same speaker are concatenated to a single training sequence. During the inference of hidden variables $\bm{z_1}$ and $\bm{z_2}$, input segments are shifted by $1$ frame. To match the length of latent variables with original features, the first and last frame are padded. 
+% The reconstructed MFCC features are extracted by FHVAE decoder.
+% conditioned on the corresponding latent variables. 
+To generate speaker-invariant reconstructed MFCCs using  the s-vector unification method, a representative speaker  is selected from training sets. In this work the English speaker `s4018' is chosen. The encoder and decoder networks of the FHVAE are both $2$-layer LSTM with $256$ neurons per layer. Latent variable dimensions for $\bm{z_1}$ and $\bm{z_2}$ are $32$. The FHVAE is trained with Adam \cite{kingma2014adam} implemented in Tensorflow \cite{Abadi2016tensorflow}, using tools developed by \cite{hsu2017nips}. 
+
+The FHVAE based speaker-invariant MFCC features with $\Delta$ and $\Delta\Delta$ are fed as inputs to DPGMM clustering. Training data for the three languages are clustered separately. The numbers of clustering iterations for English, French and Mandarin are $80, 80$ and $1400$. After clustering, the numbers of clusters are $591, 526$ and $314$. Frame  labels are used as pseudo phone alignments to support multilingual DNN training. Speaker labels  obtained from training data support the adversarial speaker prediction task. DNN input features are MFCC+CMVN. The layer-wise structure  of   $M_h$ is $\{1024\times 5, 40\}$. Nonlinear function is sigmoid, except the linear BN layer. $M_s$ contains $3$ sub-networks, 
+one for each language.
+% each associated with a target language. 
+The sub-network contains a GRL, a feed-forward layer (FFL) and a softmax layer. The GRL and FFL have $1024$ neurons. $M_p$ also contains $3$ sub-networks, each containing a $1024$-dimensional FFL and a softmax layer.
+During AMTL DNN training, the learning rate starts from $8\cdot 10^{-3}$ to $8\cdot 10^{-4}$ with exponential decay. The number of epochs is $5$. BNFs extracted from $M_h$ are evaluated by the ABX task.
+% and iterations for network training  are $5$ and $1140$. 
+Speaker adversarial weight $\lambda$ is tested from $0$ to $0.1$. DNN training is implemented using Kaldi \cite{povey2011kaldi} \texttt{nnet3} recipe. DPGMM clustering is implemented using tools developed by \cite{chang2013parallel}.
+
+In addition to  DPGMM clustering by FHVAE based speaker-invariant features, we also implemented clustering by raw MFCC features and generate alternative DPGMM labels  for comparison. In this case, the numbers of clustering iterations for the three languages are $120,200$ and $3000$.
+% cluster per-language fMLLRs by DPGMM algorithm \cite{chang2013parallel}, 
+% After clustering, 
+The numbers of clusters are 
+% and obtain 
+$1118, 1345$ and $596$,
+% clusters for English, French and Mandarin, 
+respectively. The DNN  structure and training scheme keep the same.
+% as mentioned above.
+% We basically follow our previous experimental settings 
+% Each frame is assigned with a cluster label, and each cluster is regarded as a distinctive pseudo phone.  By collapsing consecutive repeated frame-level labels,  pseudo phone-like transcriptions are generated and used to train       language-dependent  GMM-HMM AMs from scratch, following  Kaldi \texttt{wsj/s5} recipe.
+% %\footnote{\texttt{egs/wsj/s5/run.sh}}. 
+% Each pseudo phone is modeled by a $1$-state HMM, in order to prevent from unsuccessful forced-alignments. After training GMM-HMM AMs, phone-level alignments are generated as frame labels.
+% for  DNN training. 
+
+% At the second stage, a shared-hidden-layer multilingual DNN (SHL-MDNN)  is trained with all three target languages.
+% % and used to  extract multilingual BNFs.
+% % for ABX evaluation. 
+% The SHL-MDNN corresponds to $M_h$ and $M_p$ in Fig. \ref{fig:framework}. There is no $M_s$ in baseline system. Input features are $13$-dimensional MFCCs with cepstral mean variance normalization (CMVN), spliced with context size $\pm 5$. Target labels are pseudo phone-level frame alignments. The DNN structure is multi-layer perceptron (MLP), with layer-wise width  
+% % $1024 \times 4$-$40$-$1024$-
+% $1024$-$1024$-$1024$-$1024$-$40$-$1024$-``block-softmax dimension''. Nonlinear function  is  Sigmoid, except  the $40$-dimensional linear bottleneck layer. The DNN is trained by cross-entropy criterion. 
+% % with Kaldi \texttt{nnet3} recipe. Cross-entropy is chosen as the loss function. 
+% The minibatch size is $256$. The learning rate starts from $8\cdot 10^{-3}$ to $8\cdot 10^{-4}$ with exponential decay. The number of epochs and iterations for network training  are $5$ and $1140$. All three language tasks are fixed as equally weighted throughout this paper. After training, $40$-dimensional BNFs for test sets  are extracted and evaluated by ABX discriminability.
+\label{subsec:zs2017_setup}
+\subsection{Experimental results}
+
+Average ABX error rates over three target languages with different values of $\lambda$ are shown in Fig. \ref{fig:amtl}. 
+\begin{figure}[t]
+    \centering
+    \includegraphics[width = 0.9\linewidth]{adv_results2_breakyaxis_export_setup.eps}
+    \caption{Average ABX error rates over $3$ languages }
+    \label{fig:amtl}
+\end{figure}
+In this Figure, $\lambda=0$ denotes multilingual DNN training without applying speaker adversarial training. 
+% In between, the upper two sub-figures are corresponding to DPGMM labels obtained by clustering raw MFCC features. 
+From the blue dashed lines, it can be observed that speaker adversarial training could reduce ABX error rates in both across- and within-speaker conditions, with absolute reduction of $0.28$ and $0.23$ respectively. The amount of  improvement is in accordance with results reported in \cite{Tsuchiya2018speaker}, despite that  \cite{Tsuchiya2018speaker} exploited transcriptions for English set during training.
+The red dash dotted lines show that when  DPGMM labels generated by reconstructed MFCCs are employed in DNN training, the improvement of speaker adversarial training in  across-speaker condition is relatively limited. 
+% In across-speaker condition, the largest absolute error rate reduction is $0.07$.   
+The within-speaker error rate even gets worse. 
+% By comparing 
+From  Fig. \ref{fig:amtl}, it can be concluded  that frame labeling based on disentangled speech representation by FHVAEs plays a more important role  than speaker adversarial training in improving the robustness of subword modeling towards speaker variation.
+% speaker-invariant features learned by FHVAE for frame labeling is more prominent than speaker adversarial training in 
+% advancement of DPGMM labels benefited from more speaker-invariant feature representation is more prominent in 
+% improving the robustness of unsupervised subword modeling
+% than the use of speaker adversarial training.
+
+% The comparison between upper  sub-figures and lower ones shows that  the use of speaker-invariant MFCC features in providing  better pseudo-phoneme labels is more prominent in performance improvement than adversarial training.
+
+
+% it can be observed that in most cases DPGMM labels obtained based on FHVAE based speaker-invariant features 
+
+
+\label{subsec:zs2017_results}
+%DPGMM details(tool, cluster no., feature type,); dpgmm-hmm training details; DNN-BNF details;
+
+% \subsection{}
+\section{ZeroSpeech 2019 experiments}
+\subsection{Dataset and evaluation metrics}
+ZeroSpeech 2019 \cite{zs19} provides untranscribed speech data for two languages. English is used for development while the surprise language (Austronesian) is used for test only. Each language pack consists of training and test sets. The training set consists of a \textbf{unit} discovery dataset for building unsuperivsed subword models, and a \textbf{voice} dataset for training the TTS system. The optional parallel dataset is not used in this work. Details of ZeroSpeech 2019 datasets are listed in Table \ref{tab:zr19_data}.
+\begin{table}[h]
+\renewcommand\arraystretch{0.6}
+\centering
+\caption{ZeroSpeech 2019 datasets}
+\resizebox{0.8 \linewidth}{!}{%
+\begin{tabular}{ll|cc|cc}      
+% \hline      
+% \toprule
+ \toprule[1pt]\midrule[0.3pt]
+
+ && \multicolumn{2}{c|}{ English} & \multicolumn{2}{c}{Surprise} \\
+% \midrule
+&& Duration & \#speakers & Duration & \#speakers \\
+% \hline
+\midrule
+\multirow{ 2}{*}{Training} & Unit & $15.5$ hrs & $100$ & $15$ hrs &$112$ \\
+& Voice & $4.5$ hrs & $2$ & $1.5$ hrs & $1$ \\
+% \hline
+\midrule
+\multicolumn{2}{c|}{Test} & $0.5$ hr & $24$ & $0.5$ hr & $15$ \\
+% \bottomrule
+\midrule[0.3pt]\bottomrule
+
+\end{tabular}%
+}
+\label{tab:zr19_data}
+\end{table}
+
+Evaluation metrics of ZeroSpeech 2019 contain two parts. The metrics for text embeddings, i.e. automatically discovered subword unit sequences of test utterances as well as feature representation e.g. BNFs or PGs, are ABX discriminability and bitrate.  ABX error rate is the same as in ZeroSpeech2017, while bitrate is defined as the amount of information provided in the inferred unit sequences.
+% as $\frac{P\sum_{i=1}^{P} p(s_i) \log p(s_i)  }{D}$, where $D$ is the duration of test data, $P$ is the number of different units, $p(s_i)$ is the probability of the $i$-th unit. 
+The metrics for synthesized speech waveforms are character error rate (CER), speaker similarity (SS, $1$ to $5$, larger is better) and mean opision score (MOS, $1$ to $5$, larger is better) evaluated by humans.
+
+\subsection{System setup}
+% English is used to tune hyperparameters of our proposed system. The exact same system is then applied to Surprise data. 
+FHVAE model training and speaker-invariant MFCC reconstruction are performed following the configurations in ZeroSpeech 2017. The unit set is used for training. During MFCC reconstruction, a male speaker for each of the two languages is randomly selected as the representative speaker for s-vector unification. Our recent research findings \cite{Feng2019improving} showed that male speakers are more suitable than females in generating speaker-invariant features. The IDs of the selected speakers are  `S015' and `S002' in English and Surprise respectively.
+For DPGMM clustering. The numbers of clustering iterations are both $320$. The numbers of clusters are $518$ and $693$. 
+% The obtained pseudo phone alignment labels and speaker labels support speaker AMTL DNN training. 
+The speaker AMTL DNN structure and training scheme follow configurations in ZeroSpeech 2017. One difference is the placement of  adversarial sub-network $M_s$. Here $M_s$ is put on top of the FFL in $M_p$ instead of on top of $M_h$.
+Besides, the DNN is trained in a monolingual manner. After DNN training,  voice and test data are fed into the DNN to extract frame-level PGs. BNFs for test data are also extracted. Adversarial weights $\lambda$ range from $0$ to $0.12$ with a step size of $0.02$ are evaluated on English in order to determine the optimal $\lambda$.
+% are evaluated.
+
+The TTS model is trained with voice data and their subword unit sequences inferred from PGs. TTS training is implemented using tools \cite{wu2016merlin} as was done in the baseline. The trained TTS synthesizes speech waveforms according to unit sequences inferred from test data. Algorithm \ref{algo} is applied to voice set and optionally applied to test set.
+\subsection{Experimental results}
+ABX error rates of subword unit sequences, PGs and BNFs on English set with different $\lambda$s are shown in Fig. \ref{fig:adv_results_zs19}. It can be seen that the use of speaker adversarial training achieves $0.49\%$ and $0.30\%$ absolute error rate reduction on PG and BNF representations.
+% absolute error rate reduction of PG and BNF representations by applying speaker adversarial training are $0.49\%$ and $0.30\%$. 
+The unit sequence representation  does not benefit from adversarial training.
+The optimal $\lambda$ for  unit sequence representation is $0$.
+The  performance gap between frame-level PG representation and discrete unit sequences measures the phoneme discriminability distortion caused by vector quantization. 
+ 
+
+We fix $\lambda=0$ and apply the subword unit sequences  to train the TTS system. After training, the synthesized waveforms are evaluated by native speakers. The performance of our submission systems are summarized in Table \ref{tab:zr19_results_entire}. 
+\begin{table}[h]
+\renewcommand\arraystretch{0.6}
+\centering
+\caption{Comparison of our submission systems and baseline}
+% \caption{Performance  on English and Surprise sets}
+\resizebox{1 \linewidth}{!}{%
+\begin{tabular}{l|ccccc|ccccc}      
+% \hline      
+% \toprule
+ \toprule[1pt]\midrule[0.3pt]
+& \multicolumn{5}{c|}{English} & \multicolumn{5}{c}{Surprise}\\
+% &ABX (\%) & \\
+% \midrule
+ & ABX & Bitrate& MOS & CER & SS &  ABX & Bitrate& MOS & CER & SS \\
+\midrule
+ Baseline \cite{zs19} & $35.63$ & $71.98$ & $2.50$	 &$0.75$	 & $2.97$ &$27.46$ &$74.55$ &$2.07$&$0.62$	&$3.41$\\
+Unit   & ${\color{red}\bm{21.00}}$  &  $413.2$ &$1.56$ & $0.84$&$2.18$ &   ${\color{red}\bm{10.64}}$ & $470.2$ & $1.28$ & $0.74$ & $2.01$\\
+Unit w/ SM & ${\color{red}25.03}$ & $\bm{320.0}$   & $\bm{1.78}$& $\bm{0.76}$&$\bm{2.33}$   &${\color{red}16.87}$ &$\bm{299.2}$ & $\bm{1.67}$ & $\bm{0.66}$ &$\bm{2.60}$\\
+\midrule
+ PG & $13.82$ & $1733$ & $-$ & $-$ & $-$ &$7.49$ &$1373$&$-$ & $-$ & $-$ \\
+ BNF & $13.33$ & $1733$ & $-$ & $-$ & $-$  &$6.52$ & $1373$& $-$ & $-$ & $-$ \\
+% \bottomrule
+\midrule[0.3pt]\bottomrule[1pt]
+\end{tabular}%
+}
+\label{tab:zr19_results_entire}
+\end{table}
+In this Table, `w/ SM' denotes applying sequence smoothing   towards test set unit labels. Comparing to the official baseline, our proposed approaches could significantly improve  unit quality in terms of ABX discriminability. Our system without applying SM achieves $14.6\%$ and $16.8\%$ absolute error rate reduction in English and Surprise sets. If SM is applied, while the ABX error rate increases, performance improvements in terms of bitrate, MOS, CER and SS are observed. This implies that for the goal of speech synthesis, there is a trade off between quality and quantity of the  learned subword units. Our systems do not outperform baseline in terms of synthesis quality. One possible explanation is that our discovered subword units are much more fine-grained than those in the baseline AUD, which makes baseline TTS configurations less suitable for our units. In the future, we plan to investigate on alternative TTS models to take full advantage of our learned subword units.
+\begin{figure}
+    \centering
+    \includegraphics[width=0.6\linewidth]{adv_results2_zs19_export_setup.eps}
+    \caption{ABX error rates of unit sequence, PG and BNF with different adversarial weights on English set.}
+    \label{fig:adv_results_zs19}
+\end{figure}
+
+
+% \begin{table}[h]
+% \renewcommand\arraystretch{0.7}
+% \centering
+% \caption{Performance on Surprise set}
+% \resizebox{0.85 \linewidth}{!}{%
+% \begin{tabular}{l|cc|ccc}      
+% % \hline      
+% \toprule
+% % &ABX (\%) & \\
+% % \midrule
+%  & ABX (\%) & Bitrate& MOS & CER & Similarity \\
+% \midrule
+%  Baseline \cite{zs19} &$27.46$ &$74.55$ &N/A &N/A &N/A \\
+% Unit seq. &  $\bm{10.64}$ & $470.23$ & $1.28$ & $0.74$ & $2.01$ \\
+% Unit seq. w/ SM &$16.87$ &$299.21$ & $\bm{1.67}$ & $\bm{0.66}$ &$\bm{2.60}$ \\
+% \midrule
+%  PG  &$7.49$ &$1372.7$&$-$ & $-$ & $-$ \\
+%  BNF  &$6.52$ & $1372.7$& $-$ & $-$ & $-$ \\
+% \bottomrule
+% \end{tabular}%
+% }
+% \label{tab:zr19_results_su}
+% \end{table}
+% \begin{table}[h]
+% \renewcommand\arraystretch{0.7}
+% \centering
+% \caption{ABX error rate and bitrate of the baseline and our submission systems. Adversarial weight is $0$.}
+% \resizebox{0.85 \linewidth}{!}{%
+% \begin{tabular}{ll|cc|cc}      
+% % \hline      
+% \toprule
+% && \multicolumn{2}{c|}{English} & \multicolumn{2}{c}{Surprise} \\
+% % \midrule
+%  && ABX (\%) & Bitrate& ABX (\%) & Bitrate \\
+% \midrule
+% & Baseline \cite{zs19} & $35.63$ & $71.98$ & $27.46$ &$74.55$ \\
+% &Unit seq.  & $21.00$  &  $413.23$ & $10.64$  &$470.23$ \\
+% &Unit seq. w/ SM & $25.03$ & $320.01$ & $16.87$ &$299.21$\\
+% \midrule
+% \multirow{ 2}{*}{Aux.} & PG & $13.82$ & $-$ & $7.49$ &  $-$\\
+% & BNF & $13.33$ & $-$ & $6.52$ & $-$ \\
+% \bottomrule
+% \end{tabular}%
+% }
+% \label{tab:zr19_results}
+% \end{table}
+% \subsection{}
+\section{Conclusions}
+This study tackles robust unsupervised subword modeling in the zero-resource scenario. The robustness  towards speaker variation is achieved by combining speaker adversarial training and FHVAE based disentangled speech representation learning. 
+% The FHVAE model is applied to disentangle linguistic content and speaker information, and reconstruct speaker-invariant features for frame labeling. The obtained pseudo phone labels and speaker labels support speaker AMTL to generate subword discriminative representation. 
+Our proposed approaches are evaluated on  ZeroSpeech 2017 and ZeroSpeech 2019. Experimental results on ZeroSpeech 2017 demonstrate the effectiveness of our approaches, especially in across-speaker evaluation condition. Results on ZeroSpeech 2019 show that our approaches achieve significant  ABX error rate reduction compared to the baseline system. 
+The proposed unit sequence smoothing algorithm improves synthesis quality, at a cost of slight decrease in ABX discriminability.
+% By further applying the proposed unit sequence smoothing algorithm, bitrate and human based evaluation results are improved, despite a slight decrease in ABX  task.  
+% In the future, we plan to investigate on more sophisticated approaches to eliminating  phoneme discriminability degradation from frame-level feature representation to discrete subword unit representation.
+
+% \section{Acknowledgements}
+
+%  This research is partially supported by a GRF project grant (Ref: CUHK 14227216) from Hong Kong Research Grants Council.
+
+\bibliographystyle{IEEEtran}
+
+\bibliography{mybib}
+
+% \begin{thebibliography}{9}
+% \bibitem[1]{Davis80-COP}
+%   S.\ B.\ Davis and P.\ Mermelstein,
+%   ``Comparison of parametric representation for monosyllabic word recognition in continuously spoken sentences,''
+%   \textit{IEEE Transactions on Acoustics, Speech and Signal Processing}, vol.~28, no.~4, pp.~357--366, 1980.
+% \bibitem[2]{Rabiner89-ATO}
+%   L.\ R.\ Rabiner,
+%   ``A tutorial on hidden Markov models and selected applications in speech recognition,''
+%   \textit{Proceedings of the IEEE}, vol.~77, no.~2, pp.~257-286, 1989.
+% \bibitem[3]{Hastie09-TEO}
+%   T.\ Hastie, R.\ Tibshirani, and J.\ Friedman,
+%   \textit{The Elements of Statistical Learning -- Data Mining, Inference, and Prediction}.
+%   New York: Springer, 2009.
+% \bibitem[4]{YourName17-XXX}
+%   F.\ Lastname1, F.\ Lastname2, and F.\ Lastname3,
+%   ``Title of your INTERSPEECH 2018 publication,''
+%   in \textit{Interspeech 2018 -- 19\textsuperscript{th} Annual Conference of the International Speech Communication Association, September 2-6, Hyderabad, India Proceedings, Proceedings}, 2018, pp.~100--104.
+% \end{thebibliography}
+
+\end{document}
