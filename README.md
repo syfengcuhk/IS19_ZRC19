@@ -1,4 +1,6 @@
 # IS19_ZRC19
+To cite this paper:
+
 @inproceedings{DBLP:conf/interspeech/FengLP19,
   author    = {Siyuan Feng and
                Tan Lee and
